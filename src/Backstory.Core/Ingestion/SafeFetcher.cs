@@ -124,6 +124,7 @@ public sealed class SafeFetcher
             // that sends headers and then stalls could otherwise hold this request forever.)
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
             deadline.CancelAfter(_options.RequestTimeout);
+            var started = _time.GetTimestamp();
 
             HttpResponseMessage response;
             try
@@ -179,6 +180,12 @@ public sealed class SafeFetcher
 
                 if (body is null)
                     return Reject(url, current, $"too large (over {_options.MaxDocumentBytes} bytes)");
+
+                var elapsed = _time.GetElapsedTime(started);
+                if (elapsed >= _options.SlowRequestThreshold)
+                    _logger.LogWarning("Slow response: {Url} took {Seconds:0.0}s ({Chars} chars)", current, elapsed.TotalSeconds, body.Length);
+                else
+                    _logger.LogDebug("Fetched {Url} in {Ms:0}ms ({Chars} chars)", current, elapsed.TotalMilliseconds, body.Length);
 
                 return new FetchResult(FetchStatus.Fetched, url, current, source, body, "ok", status);
             }

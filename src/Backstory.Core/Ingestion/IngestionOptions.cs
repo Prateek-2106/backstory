@@ -20,6 +20,15 @@ public sealed class IngestionOptions
     public int MinTextLength { get; set; } = 200;
 
     public TimeSpan RequestTimeout { get; set; } = TimeSpan.FromSeconds(20);
+
+    /// <summary>Requests slower than this are logged by name, so a slow site is visible, not a mystery.</summary>
+    public TimeSpan SlowRequestThreshold { get; set; } = TimeSpan.FromSeconds(5);
+
+    /// <summary>
+    /// Max time one poll of one feed may spend. Items not reached are deferred to the next poll (not dropped),
+    /// so one slow site can't make a feed look dead.
+    /// </summary>
+    public TimeSpan MaxPollDuration { get; set; } = TimeSpan.FromMinutes(5);
     public TimeSpan RobotsCacheDuration { get; set; } = TimeSpan.FromHours(1);
 
     public List<FeedDefinition> Feeds { get; set; } = [];

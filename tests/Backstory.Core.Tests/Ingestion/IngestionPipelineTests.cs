@@ -40,14 +40,21 @@ public class IngestionPipelineTests
     private readonly RecordingPublisher _kafka = new();
     private readonly SeenUrlCache _seen = new();
 
-    private IngestionPipeline CreatePipeline()
+    private IngestionPipeline CreatePipeline(IngestionOptions? options = null, TimeProvider? time = null)
     {
-        var options = new IngestionOptions { MinTextLength = 50 };
+        options ??= new IngestionOptions { MinTextLength = 50 };
+        time ??= TimeProvider.System;
         var fetcher = new SafeFetcher(new HttpClient(_web), Trust,
-            new DomainRateLimiter(TimeProvider.System, (_, _) => Task.CompletedTask),
-            options, TimeProvider.System, NullLogger<SafeFetcher>.Instance);
-        return new IngestionPipeline(fetcher, Trust, _seen, _kafka, options, TimeProvider.System,
+            new DomainRateLimiter(time, (_, _) => Task.CompletedTask),
+            options, time, NullLogger<SafeFetcher>.Instance);
+        return new IngestionPipeline(fetcher, Trust, _seen, _kafka, options, time,
             NullLogger<IngestionPipeline>.Instance);
+    }
+
+    private sealed class ManualClock : TimeProvider
+    {
+        public DateTimeOffset Now { get; set; } = new(2026, 9, 26, 12, 0, 0, TimeSpan.Zero);
+        public override DateTimeOffset GetUtcNow() => Now;
     }
 
     private static FeedDefinition SourceFeedDef => new() { Id = "un", Url = SourceFeedUrl, Kind = FeedKind.Source };
@@ -189,6 +196,45 @@ public class IngestionPipelineTests
         var un = _kafka.Documents.Single(d => d.Domain == "news.un.org");
         Assert.Equal("rss-page-fallback", un.Origin);   // not silently labelled "rss-page"
         Assert.Equal("The Council met on Tuesday.", un.Text);
+    }
+
+    [Fact]
+    public async Task SlowSite_PollStopsAtTimeBudget_RestDeferredToNextPoll()
+    {
+        // Three full-text items; each page takes "3 minutes" (fake clock), the budget is 5 minutes.
+        var clock = new ManualClock();
+        _web.Xml(SourceFeedUrl, """
+            <rss><channel>
+              <item><title>One</title><link>https://news.un.org/en/story/1</link></item>
+              <item><title>Two</title><link>https://news.un.org/en/story/2</link></item>
+              <item><title>Three</title><link>https://news.un.org/en/story/3</link></item>
+            </channel></rss>
+            """);
+        foreach (var n in new[] { 1, 2, 3 })
+        {
+            _web.Add($"https://news.un.org/en/story/{n}", () =>
+            {
+                clock.Now += TimeSpan.FromMinutes(3); // a very slow site
+                return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = new StringContent(UnStoryHtml, System.Text.Encoding.UTF8, "text/html"),
+                };
+            });
+        }
+        var options = new IngestionOptions { MinTextLength = 50, MaxPollDuration = TimeSpan.FromMinutes(5) };
+        var pipeline = CreatePipeline(options, clock);
+
+        var first = await pipeline.PollAsync(SourceFeedDef, default);
+
+        // t=0 story 1 (→3 min), t=3 story 2 (→6 min), t=6 > 5: story 3 deferred.
+        Assert.Equal(2, first.Published);
+        Assert.Equal(1, first.Deferred);
+
+        var second = await pipeline.PollAsync(SourceFeedDef, default);
+
+        Assert.Equal(1, second.Published);  // the deferred item was not lost
+        Assert.Equal(2, second.AlreadySeen);
+        Assert.Equal(0, second.Deferred);
     }
 
     private sealed class RecordingPublisher : IEventPublisher

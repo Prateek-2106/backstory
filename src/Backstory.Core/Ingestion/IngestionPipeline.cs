@@ -18,7 +18,8 @@ public sealed record FeedPollResult(
     int Rejected,
     int Failed,
     IReadOnlyList<string> SkipReasons,
-    int SummaryFallbacks = 0);
+    int SummaryFallbacks = 0,
+    int Deferred = 0);
 
 /// <summary>
 /// One poll of one feed: fetch → parse → for each new item, run the trust checkpoints → publish.
@@ -72,7 +73,7 @@ public sealed class IngestionPipeline
     {
         var now = _time.GetUtcNow();
         var reasons = new List<string>();
-        int published = 0, seen = 0, untrusted = 0, rejected = 0, failed = 0, fallbacks = 0;
+        int published = 0, seen = 0, untrusted = 0, rejected = 0, failed = 0, fallbacks = 0, deferred = 0;
 
         // Feeds themselves go through SafeFetcher (so a source feed that redirects off the allowlist is refused).
         // Newsroom feeds are our own content and are not on the allowlist, so they skip the trust gate.
@@ -81,7 +82,10 @@ public sealed class IngestionPipeline
             : await _fetcher.FetchUntrustedFeedAsync(feed.Url, ct);
 
         if (!feedResult.IsFetched)
+        {
+            _logger.LogWarning("Could not fetch feed {FeedId}: {Reason}", feed.Id, feedResult.Reason);
             return new FeedPollResult(feed.Id, now, false, feedResult.Reason, 0, 0, 0, 0, 0, 0, []);
+        }
 
         IReadOnlyList<FeedItem> items;
         try
@@ -90,11 +94,26 @@ public sealed class IngestionPipeline
         }
         catch (FeedFormatException ex)
         {
+            _logger.LogWarning("Feed {FeedId} could not be parsed: {Error}", feed.Id, ex.Message);
             return new FeedPollResult(feed.Id, now, false, ex.Message, 0, 0, 0, 0, 0, 0, []);
         }
 
-        foreach (var item in items.Take(_options.MaxItemsPerPoll))
+        var toCheck = items.Take(_options.MaxItemsPerPoll).ToList();
+        _logger.LogInformation("Polling {FeedId}: {Count} item(s) to check", feed.Id, toCheck.Count);
+        var budgetEnds = now + _options.MaxPollDuration;
+
+        for (var i = 0; i < toCheck.Count; i++)
         {
+            var item = toCheck[i];
+            if (_time.GetUtcNow() > budgetEnds)
+            {
+                // Out of time: leave the rest unmarked, so the next poll picks them up.
+                deferred = toCheck.Count - i;
+                _logger.LogWarning("{FeedId}: poll time budget of {Minutes} min used up; {Deferred} item(s) deferred to the next poll",
+                    feed.Id, _options.MaxPollDuration.TotalMinutes, deferred);
+                break;
+            }
+
             // Keyed per feed kind: the same URL can legitimately be both a newsroom headline and
             // a source document (e.g. an NPR story in both NPR feeds), and one must not hide the other.
             var key = SeenKey(feed.Kind, item.Link);
@@ -178,10 +197,10 @@ public sealed class IngestionPipeline
             published++;
         }
 
-        var result = new FeedPollResult(feed.Id, now, true, null, items.Count, published, seen, untrusted, rejected, failed, reasons, fallbacks);
+        var result = new FeedPollResult(feed.Id, now, true, null, items.Count, published, seen, untrusted, rejected, failed, reasons, fallbacks, deferred);
         _logger.LogInformation(
-            "Polled {FeedId}: {Items} items, {Published} published ({Fallbacks} with summary fallback), {Seen} already seen, {Untrusted} untrusted, {Rejected} rejected, {Failed} failed",
-            feed.Id, result.Items, published, fallbacks, seen, untrusted, rejected, failed);
+            "Polled {FeedId} in {Seconds:0}s: {Items} items, {Published} published ({Fallbacks} with summary fallback), {Seen} already seen, {Untrusted} untrusted, {Rejected} rejected, {Failed} failed, {Deferred} deferred",
+            feed.Id, (_time.GetUtcNow() - now).TotalSeconds, result.Items, published, fallbacks, seen, untrusted, rejected, failed, deferred);
         return result;
     }
 
