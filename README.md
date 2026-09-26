@@ -15,6 +15,7 @@ global.json                pins the .NET SDK band
 src/
   Backstory.Core/            domain, contracts, messaging logic, RAG pipeline (no third-party deps)
   Backstory.Infrastructure/  Kafka adapter (Postgres, Redis, Qdrant later)
+  Backstory.Ingestion.Worker/ polls feeds, trust-checks every link, publishes to Kafka
 tools/
   Backstory.KafkaDemo/       step 3 demo: publish, consume, retry, dead-letter
 tests/
@@ -59,6 +60,15 @@ dotnet build -c Release
 dotnet test -c Release                                  # everything (Kafka must be running)
 dotnet test -c Release --filter "Category!=Integration" # unit tests only
 ```
+
+## Ingestion Worker (step 4)
+
+```bash
+dotnet run --project src/Backstory.Ingestion.Worker
+```
+
+- http://localhost:5101/ingestion/status shows each feed's last poll: published, already seen, untrusted, rejected, with reasons
+- Feeds are configured in `src/Backstory.Ingestion.Worker/appsettings.json`; the allowlist is `config/trusted-sources.json`
 
 ## Kafka demo (step 3)
 

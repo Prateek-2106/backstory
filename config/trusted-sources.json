@@ -16,6 +16,7 @@
     { "domain": "reuters.com",      "name": "Reuters",                  "tier": "wire", "allowFullText": false },
     { "domain": "bbc.co.uk",        "name": "BBC",                      "tier": "wire", "allowFullText": false },
     { "domain": "bbc.com",          "name": "BBC",                      "tier": "wire", "allowFullText": false },
+    { "domain": "bbci.co.uk",       "name": "BBC (feeds)",              "tier": "wire", "allowFullText": false },
     { "domain": "npr.org",          "name": "NPR",                      "tier": "wire", "allowFullText": false },
     { "domain": "pbs.org",          "name": "PBS",                      "tier": "wire", "allowFullText": false },
 

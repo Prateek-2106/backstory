@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <!-- Polls RSS feeds, runs the trust checkpoints, publishes to Kafka. Web SDK = it also serves /healthz and /ingestion/status. -->
+  <ItemGroup>
+    <ProjectReference Include="..\Backstory.Infrastructure\Backstory.Infrastructure.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The same allowlist the tests use, copied next to the DLL. In Kubernetes it comes from a ConfigMap. -->
+    <None Include="..\..\config\trusted-sources.json" Link="trusted-sources.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>
