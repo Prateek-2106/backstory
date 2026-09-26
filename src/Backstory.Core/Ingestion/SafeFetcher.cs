@@ -119,10 +119,16 @@ public sealed class SafeFetcher
                 _ => "text/html, application/xhtml+xml;q=0.9",
             });
 
+            // One deadline for the WHOLE request: connecting, headers AND reading the body.
+            // (HttpClient.Timeout stops at the headers when using ResponseHeadersRead, so a server
+            // that sends headers and then stalls could otherwise hold this request forever.)
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            deadline.CancelAfter(_options.RequestTimeout);
+
             HttpResponseMessage response;
             try
             {
-                response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+                response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
             }
             catch (HttpRequestException ex)
             {
@@ -157,7 +163,20 @@ public sealed class SafeFetcher
                 if (response.Content.Headers.ContentLength > _options.MaxDocumentBytes)
                     return Reject(url, current, $"too large ({response.Content.Headers.ContentLength} bytes)");
 
-                var body = await ReadCappedAsync(response.Content, ct);
+                string? body;
+                try
+                {
+                    body = await ReadCappedAsync(response.Content, deadline.Token);
+                }
+                catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+                {
+                    return Fail(url, current, $"timed out reading the body after {_options.RequestTimeout.TotalSeconds:0}s", status);
+                }
+                catch (Exception ex) when (ex is HttpRequestException or IOException)
+                {
+                    return Fail(url, current, $"connection dropped while reading the body: {ex.Message}", status);
+                }
+
                 if (body is null)
                     return Reject(url, current, $"too large (over {_options.MaxDocumentBytes} bytes)");
 

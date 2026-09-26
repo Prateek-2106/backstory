@@ -166,6 +166,45 @@ public class SafeFetcherTests
     }
 
     [Fact]
+    public async Task ServerStallsMidBody_TimesOut_InsteadOfHangingForever()
+    {
+        // Regression: the timeout used to cover only the response headers, so a server that sent
+        // headers and then stalled could block a feed's poll forever.
+        _web.Add("https://news.un.org/slow", () => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StreamContent(new StalledStream()) { Headers = { ContentType = new("text/html") } },
+        });
+
+        var result = await CreateFetcher(new IngestionOptions { RequestTimeout = TimeSpan.FromMilliseconds(300) })
+            .FetchAsync("https://news.un.org/slow", FetchKind.Page, default)
+            .WaitAsync(TimeSpan.FromSeconds(10)); // if the fix regresses, fail instead of hanging the test run
+
+        Assert.Equal(FetchStatus.Failed, result.Status);
+        Assert.Contains("timed out reading the body", result.Reason, StringComparison.Ordinal);
+    }
+
+    /// <summary>A response body that never delivers a byte.</summary>
+    private sealed class StalledStream : Stream
+    {
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => 0; set => throw new NotSupportedException(); }
+        public override void Flush() { }
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            await Task.Delay(Timeout.Infinite, cancellationToken);
+            return 0;
+        }
+    }
+
+    [Fact]
     public async Task Feed_RequiresXmlContentType()
     {
         _web.Html("https://news.un.org/feed", "<html>not a feed</html>");
