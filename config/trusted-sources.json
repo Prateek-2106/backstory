@@ -1,0 +1,25 @@
+// The allowlist. Anything not listed here is never fetched, indexed or cited.
+// tier: "primary" (official), "wire" (wire services / public broadcasters), "reference" (encyclopedias)
+// domain: "example.com" also covers subdomains; "*.gov" covers every host ending in .gov
+{
+  "sources": [
+    { "domain": "*.gov",            "name": "U.S. government",          "tier": "primary" },
+    { "domain": "un.org",           "name": "United Nations",           "tier": "primary" },
+    { "domain": "who.int",          "name": "World Health Organization","tier": "primary" },
+    { "domain": "europa.eu",        "name": "European Union",           "tier": "primary" },
+    { "domain": "worldbank.org",    "name": "World Bank",               "tier": "primary" },
+    { "domain": "imf.org",          "name": "IMF",                      "tier": "primary" },
+    { "domain": "supremecourt.gov", "name": "U.S. Supreme Court",       "tier": "primary" },
+    { "domain": "gov.uk",           "name": "UK government",            "tier": "primary" },
+
+    { "domain": "apnews.com",       "name": "Associated Press",         "tier": "wire", "allowFullText": false },
+    { "domain": "reuters.com",      "name": "Reuters",                  "tier": "wire", "allowFullText": false },
+    { "domain": "bbc.co.uk",        "name": "BBC",                      "tier": "wire", "allowFullText": false },
+    { "domain": "bbc.com",          "name": "BBC",                      "tier": "wire", "allowFullText": false },
+    { "domain": "npr.org",          "name": "NPR",                      "tier": "wire", "allowFullText": false },
+    { "domain": "pbs.org",          "name": "PBS",                      "tier": "wire", "allowFullText": false },
+
+    { "domain": "en.wikipedia.org", "name": "Wikipedia",                "tier": "reference", "maxRequestsPerMinute": 60 },
+    { "domain": "britannica.com",   "name": "Encyclopaedia Britannica", "tier": "reference", "allowFullText": false }
+  ]
+}

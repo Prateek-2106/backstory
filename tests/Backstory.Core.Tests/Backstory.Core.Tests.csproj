@@ -14,6 +14,10 @@
     <Using Include="Xunit" />
   </ItemGroup>
   <ItemGroup>
+    <!-- Copy the real allowlist next to the test DLL so a test can load it. -->
+    <None Include="..\..\config\trusted-sources.json" Link="trusted-sources.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\..\src\Backstory.Core\Backstory.Core.csproj" />
   </ItemGroup>
 </Project>
