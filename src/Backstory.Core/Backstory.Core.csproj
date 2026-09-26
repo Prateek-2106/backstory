@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Domain, contracts and the RAG pipeline. Kept free of third-party packages so it is fully unit-testable. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="Backstory.Core.Tests" />
+  </ItemGroup>
+</Project>
