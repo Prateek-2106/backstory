@@ -205,6 +205,20 @@ public class SafeFetcherTests
     }
 
     [Fact]
+    public async Task BodyWithByteOrderMark_IsDecodedWithoutIt()
+    {
+        var bytes = new byte[] { 0xEF, 0xBB, 0xBF }.Concat(System.Text.Encoding.UTF8.GetBytes("<rss></rss>")).ToArray();
+        _web.Add("https://news.un.org/feed", () => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new ByteArrayContent(bytes) { Headers = { ContentType = new("application/rss+xml") } },
+        });
+
+        var result = await CreateFetcher().FetchAsync("https://news.un.org/feed", FetchKind.Feed, default);
+
+        Assert.Equal("<rss></rss>", result.Body); // no invisible U+FEFF at the start
+    }
+
+    [Fact]
     public async Task Feed_RequiresXmlContentType()
     {
         _web.Html("https://news.un.org/feed", "<html>not a feed</html>");

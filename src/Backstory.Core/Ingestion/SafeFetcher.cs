@@ -223,7 +223,11 @@ public sealed class SafeFetcher
             try { encoding = Encoding.GetEncoding(charset); }
             catch (ArgumentException) { /* unknown charset: stay with UTF-8 */ }
         }
-        return encoding.GetString(buffer.GetBuffer(), 0, (int)buffer.Length);
+        // StreamReader honours a byte-order mark if present (and strips it); plain GetString would keep
+        // UTF-8's BOM as an invisible U+FEFF at position 0, which XML parsers reject (this broke the WHO feed).
+        buffer.Position = 0;
+        using var reader = new StreamReader(buffer, encoding, detectEncodingFromByteOrderMarks: true);
+        return await reader.ReadToEndAsync(ct);
     }
 
     private async Task<bool> IsAllowedByRobotsAsync(Uri uri, CancellationToken ct)

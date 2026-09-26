@@ -30,7 +30,8 @@ public static class FeedParser
         var settings = new XmlReaderSettings { DtdProcessing = DtdProcessing.Ignore, XmlResolver = null };
         try
         {
-            using var reader = XmlReader.Create(new StringReader(xml), settings);
+            // Tolerate a stray byte-order mark or whitespace before "<?xml" (both are common on real feeds).
+            using var reader = XmlReader.Create(new StringReader(xml.TrimStart('\uFEFF', ' ', '\t', '\r', '\n')), settings);
             return XDocument.Load(reader);
         }
         catch (XmlException ex)

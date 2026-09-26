@@ -59,6 +59,15 @@ public class FeedParserTests
     }
 
     [Fact]
+    public void LeadingByteOrderMarkAndWhitespace_AreTolerated()
+    {
+        // Regression: the WHO feed starts with a UTF-8 BOM; the parser failed at "Line 1, position 1".
+        var xml = "\uFEFF\r\n  <rss><channel><item><title>WHO</title><link>https://www.who.int/news/1</link></item></channel></rss>";
+
+        Assert.Single(FeedParser.Parse(xml, FeedUrl));
+    }
+
+    [Fact]
     public void MalformedXml_ThrowsFeedFormatException()
     {
         Assert.Throws<FeedFormatException>(() => FeedParser.Parse("<rss><channel>", FeedUrl));
