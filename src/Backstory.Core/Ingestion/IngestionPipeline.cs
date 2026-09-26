@@ -94,7 +94,9 @@ public sealed class IngestionPipeline
 
         foreach (var item in items.Take(_options.MaxItemsPerPoll))
         {
-            var key = UrlIdentity.Normalize(item.Link);
+            // Keyed per feed kind: the same URL can legitimately be both a newsroom headline and
+            // a source document (e.g. an NPR story in both NPR feeds), and one must not hide the other.
+            var key = SeenKey(feed.Kind, item.Link);
             if (_seen.Contains(key))
             {
                 seen++;
@@ -157,7 +159,7 @@ public sealed class IngestionPipeline
                 var finalHost = new Uri(page.FinalUrl!).Host;
                 document = BuildDocument(page.FinalUrl!, finalHost, extracted.Title ?? item.Title, text,
                     extracted.PublishedAt ?? item.PublishedAt, now, "rss-page");
-                _seen.Add(UrlIdentity.Normalize(page.FinalUrl!));
+                _seen.Add(SeenKey(feed.Kind, page.FinalUrl!));
             }
 
             await _publisher.PublishAsync(Topics.SourceDocuments, document.DocumentId,
@@ -172,6 +174,8 @@ public sealed class IngestionPipeline
             feed.Id, result.Items, published, seen, untrusted, rejected, failed);
         return result;
     }
+
+    private static string SeenKey(FeedKind kind, string url) => $"{kind}:{UrlIdentity.Normalize(url)}";
 
     private static SourceDocumentFetched BuildDocument(string url, string host, string title, string text,
         DateTimeOffset? publishedAt, DateTimeOffset now, string origin) =>

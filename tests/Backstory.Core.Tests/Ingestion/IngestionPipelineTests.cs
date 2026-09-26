@@ -155,6 +155,28 @@ public class IngestionPipelineTests
         Assert.Equal("politics", article.Section);
     }
 
+    [Fact]
+    public async Task SameUrlInNewsroomAndSourceFeeds_IsPublishedAsBoth()
+    {
+        // Regression: NPR stories appear in both the newsroom feed and the NPR World source feed.
+        // A shared "seen" cache made the source feed skip them after the newsroom feed ran first.
+        const string newsroomUrl = "https://our-site.example/rss";
+        _web.Xml(newsroomUrl, """
+                <rss><channel><item><title>Security Council meets on Sudan</title>
+                <link>https://www.bbc.co.uk/news/world-1</link></item></channel></rss>
+                """)
+            .Xml(SourceFeedUrl, SourceFeed)
+            .Html("https://news.un.org/en/story/1", UnStoryHtml);
+        var pipeline = CreatePipeline();
+
+        await pipeline.PollAsync(new FeedDefinition { Id = "newsroom", Url = newsroomUrl, Kind = FeedKind.Newsroom }, default);
+        var source = await pipeline.PollAsync(SourceFeedDef, default);
+
+        Assert.Equal(0, source.AlreadySeen);
+        Assert.Contains(_kafka.Documents, d => d.Url == "https://www.bbc.co.uk/news/world-1");
+        Assert.Contains(_kafka.Articles, a => a.Article.Url == "https://www.bbc.co.uk/news/world-1");
+    }
+
     private sealed class RecordingPublisher : IEventPublisher
     {
         public List<(string Topic, string Key, object Data)> Published { get; } = [];
