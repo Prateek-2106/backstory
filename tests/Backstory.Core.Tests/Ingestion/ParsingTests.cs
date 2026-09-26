@@ -111,6 +111,56 @@ public class HtmlTextExtractorTests
     }
 
     [Fact]
+    public void Extract_NestedArticle_KeepsWholeStory()
+    {
+        // The UN News shape: an image embed is its own <article> inside the story's <article>.
+        // Regression: a non-greedy regex stopped at the image's </article> and lost everything after it.
+        const string html = """
+            <html><body><article class="node--type-news-story">
+              <p>Palestinian President Mahmoud Abbas told the General Assembly on Thursday that policies threaten his people.</p>
+              <article class="media media--type-image"><img src="x.jpg"><p>Photo caption that is also long enough to keep.</p></article>
+              <p>He urged the world not to allow what he called another Nakba, referring to the events of 1948.</p>
+              <p>The Assembly's high-level week continues with more than one hundred heads of state speaking.</p>
+            </article></body></html>
+            """;
+
+        var text = HtmlTextExtractor.Extract(html).Text;
+
+        Assert.Contains("told the General Assembly", text, StringComparison.Ordinal);
+        Assert.Contains("another Nakba", text, StringComparison.Ordinal);                 // after the nested article
+        Assert.Contains("more than one hundred heads of state", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Extract_ChoosesRegionWithMostText_NotMostHtml()
+    {
+        // Big HTML, little text (a grid of teaser cards) vs. the actual story.
+        var teasers = string.Concat(Enumerable.Range(1, 30).Select(i =>
+            $"<article><a href='/s/{i}'><div class='card' data-x='{new string('x', 200)}'>Short teaser {i}</div></a></article>"));
+        var html = $"""
+            <html><body>{teasers}
+            <main><p>This is the real story and it has a proper paragraph of text in it.</p>
+            <p>It continues with a second paragraph that also has plenty of words inside.</p>
+            <p>And a third paragraph, so that it clearly beats every teaser card on the page.</p>
+            <p>Plus a fourth paragraph to push the story comfortably past two hundred characters.</p></main>
+            </body></html>
+            """;
+
+        var text = HtmlTextExtractor.Extract(html).Text;
+
+        Assert.StartsWith("This is the real story", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("Short teaser", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void BalancedBlocks_ReturnsOutermostOnly()
+    {
+        var blocks = HtmlTextExtractor.BalancedBlocks("<article>a<article>b</article>c</article><article>d</article>", "article").ToList();
+
+        Assert.Equal(new[] { "a<article>b</article>c", "d" }, blocks);
+    }
+
+    [Fact]
     public void Extract_NoArticleTag_FallsBackToMainThenBody()
     {
         const string html = "<html><body><main><p>Main content paragraph with enough words to keep.</p></main></body></html>";

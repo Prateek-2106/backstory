@@ -11,7 +11,7 @@ public sealed record ExtractedPage(string? Title, string Text, DateTimeOffset? P
 /// <summary>
 /// Turns an article page into clean text for embedding. Deliberately simple and dependency-free:
 ///   1. throw away code and chrome: script, style, nav, header, footer, aside, forms...
-///   2. keep the main region: the largest &lt;article&gt;, else &lt;main&gt;, else &lt;body&gt;
+///   2. keep the main region: the &lt;article&gt; or &lt;main&gt; with the most paragraph text, else &lt;body&gt;
 ///   3. split on block tags (p, li, h1-h6...), strip remaining tags, decode entities
 ///   4. drop short lines ("Share", "Menu", "Read more"), which are almost always navigation
 /// Trade-off: regexes are not a real HTML parser and will occasionally keep junk or drop a line.
@@ -21,6 +21,7 @@ public static partial class HtmlTextExtractor
 {
     private const int MinWordsPerLine = 6;
     private const int MaxTextChars = 100_000;
+    private const int MinRegionChars = 200;
 
     public static ExtractedPage Extract(string html)
     {
@@ -39,8 +40,7 @@ public static partial class HtmlTextExtractor
             published = p;
 
         var body = RemoveNoise(html);
-        var region = PickMainRegion(body);
-        var text = ToParagraphs(region);
+        var text = BestText(body);
 
         return new ExtractedPage(string.IsNullOrWhiteSpace(title) ? null : title, text, published);
     }
@@ -59,19 +59,52 @@ public static partial class HtmlTextExtractor
         return s;
     }
 
-    private static string PickMainRegion(string html)
+    /// <summary>
+    /// Try each &lt;article&gt; and &lt;main&gt; region and keep the one that yields the most paragraph text
+    /// (not the most raw HTML: a card grid of teasers is large but says little). If none yields a real
+    /// article's worth of text, fall back to the whole &lt;body&gt;.
+    /// </summary>
+    private static string BestText(string html)
     {
-        var largestArticle = ArticleBlock().Matches(html)
-            .Select(m => m.Groups[1].Value)
-            .OrderByDescending(v => v.Length)
-            .FirstOrDefault();
-        if (!string.IsNullOrWhiteSpace(largestArticle))
-            return largestArticle;
+        var best = BalancedBlocks(html, "article")
+            .Concat(BalancedBlocks(html, "main"))
+            .Select(ToParagraphs)
+            .OrderByDescending(t => t.Length)
+            .FirstOrDefault() ?? "";
 
-        if (MainBlock().Match(html) is { Success: true } main)
-            return main.Groups[1].Value;
+        if (best.Length >= MinRegionChars)
+            return best;
 
-        return BodyBlock().Match(html) is { Success: true } body ? body.Groups[1].Value : html;
+        var bodyRegion = BodyBlock().Match(html) is { Success: true } b ? b.Groups[1].Value : html;
+        var whole = ToParagraphs(bodyRegion);
+        return whole.Length > best.Length ? whole : best;
+    }
+
+    /// <summary>
+    /// The contents of each OUTERMOST &lt;tag&gt;...&lt;/tag&gt;, counting nesting properly.
+    /// A plain non-greedy regex stops at the first closing tag, so for
+    /// &lt;article&gt; lead &lt;article&gt;image&lt;/article&gt; body &lt;/article&gt; it would return only "lead + image".
+    /// (That bug truncated UN News stories, which nest an &lt;article&gt; for each embedded image.)
+    /// </summary>
+    internal static IEnumerable<string> BalancedBlocks(string html, string tag)
+    {
+        var depth = 0;
+        var start = 0;
+        foreach (Match m in RegionTag().Matches(html))
+        {
+            if (!m.Groups[2].Value.Equals(tag, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            if (m.Groups[1].Value != "/")
+            {
+                if (depth == 0) start = m.Index + m.Length;
+                depth++;
+            }
+            else if (depth > 0 && --depth == 0)
+            {
+                yield return html[start..m.Index];
+            }
+        }
     }
 
     private static string ToParagraphs(string region)
@@ -115,8 +148,7 @@ public static partial class HtmlTextExtractor
 
     [GeneratedRegex("<!--.*?-->", OptsMulti, TimeoutMs)] private static partial Regex Comments();
     [GeneratedRegex(@"<(script|style|noscript|svg|iframe|template|head|nav|header|footer|aside|form|button|figure)\b[^>]*>.*?</\1\s*>", OptsMulti, TimeoutMs)] private static partial Regex NoiseBlocks();
-    [GeneratedRegex(@"<article\b[^>]*>(.*?)</article\s*>", OptsMulti, TimeoutMs)] private static partial Regex ArticleBlock();
-    [GeneratedRegex(@"<main\b[^>]*>(.*?)</main\s*>", OptsMulti, TimeoutMs)] private static partial Regex MainBlock();
+    [GeneratedRegex(@"<(/?)(article|main)\b[^>]*>", Opts, TimeoutMs)] private static partial Regex RegionTag();
     [GeneratedRegex(@"<body\b[^>]*>(.*?)</body\s*>", OptsMulti, TimeoutMs)] private static partial Regex BodyBlock();
     [GeneratedRegex(@"<title\b[^>]*>(.*?)</title\s*>", OptsMulti, TimeoutMs)] private static partial Regex TitleTag();
     [GeneratedRegex(@"</?(p|div|br|li|ul|ol|h[1-6]|tr|td|th|section|blockquote|pre|table)\b[^>]*>", Opts, TimeoutMs)] private static partial Regex BlockTag();

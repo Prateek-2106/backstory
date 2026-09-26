@@ -177,6 +177,20 @@ public class IngestionPipelineTests
         Assert.Contains(_kafka.Articles, a => a.Article.Url == "https://www.bbc.co.uk/news/world-1");
     }
 
+    [Fact]
+    public async Task PageWithTooLittleText_FallsBackToSummary_AndSaysSo()
+    {
+        _web.Xml(SourceFeedUrl, SourceFeed)
+            .Html("https://news.un.org/en/story/1", "<html><body><p>Too short.</p></body></html>");
+
+        var result = await CreatePipeline().PollAsync(SourceFeedDef, default);
+
+        Assert.Equal(1, result.SummaryFallbacks);
+        var un = _kafka.Documents.Single(d => d.Domain == "news.un.org");
+        Assert.Equal("rss-page-fallback", un.Origin);   // not silently labelled "rss-page"
+        Assert.Equal("The Council met on Tuesday.", un.Text);
+    }
+
     private sealed class RecordingPublisher : IEventPublisher
     {
         public List<(string Topic, string Key, object Data)> Published { get; } = [];

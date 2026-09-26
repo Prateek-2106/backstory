@@ -17,7 +17,8 @@ public sealed record FeedPollResult(
     int Untrusted,
     int Rejected,
     int Failed,
-    IReadOnlyList<string> SkipReasons);
+    IReadOnlyList<string> SkipReasons,
+    int SummaryFallbacks = 0);
 
 /// <summary>
 /// One poll of one feed: fetch → parse → for each new item, run the trust checkpoints → publish.
@@ -71,7 +72,7 @@ public sealed class IngestionPipeline
     {
         var now = _time.GetUtcNow();
         var reasons = new List<string>();
-        int published = 0, seen = 0, untrusted = 0, rejected = 0, failed = 0;
+        int published = 0, seen = 0, untrusted = 0, rejected = 0, failed = 0, fallbacks = 0;
 
         // Feeds themselves go through SafeFetcher (so a source feed that redirects off the allowlist is refused).
         // Newsroom feeds are our own content and are not on the allowlist, so they skip the trust gate.
@@ -155,10 +156,19 @@ public sealed class IngestionPipeline
                 }
 
                 var extracted = HtmlTextExtractor.Extract(page.Body!);
-                var text = extracted.Text.Length >= _options.MinTextLength ? extracted.Text : item.Summary ?? extracted.Text;
+                var usedPage = extracted.Text.Length >= _options.MinTextLength;
+                if (!usedPage)
+                {
+                    // Visible on purpose: a silent fallback hid an extractor bug once already.
+                    fallbacks++;
+                    _logger.LogWarning("Extracted only {Chars} chars from {Url}; using the feed summary instead",
+                        extracted.Text.Length, page.FinalUrl);
+                }
+
+                var text = usedPage ? extracted.Text : item.Summary ?? extracted.Text;
                 var finalHost = new Uri(page.FinalUrl!).Host;
                 document = BuildDocument(page.FinalUrl!, finalHost, extracted.Title ?? item.Title, text,
-                    extracted.PublishedAt ?? item.PublishedAt, now, "rss-page");
+                    extracted.PublishedAt ?? item.PublishedAt, now, usedPage ? "rss-page" : "rss-page-fallback");
                 _seen.Add(SeenKey(feed.Kind, page.FinalUrl!));
             }
 
@@ -168,10 +178,10 @@ public sealed class IngestionPipeline
             published++;
         }
 
-        var result = new FeedPollResult(feed.Id, now, true, null, items.Count, published, seen, untrusted, rejected, failed, reasons);
+        var result = new FeedPollResult(feed.Id, now, true, null, items.Count, published, seen, untrusted, rejected, failed, reasons, fallbacks);
         _logger.LogInformation(
-            "Polled {FeedId}: {Items} items, {Published} published, {Seen} already seen, {Untrusted} untrusted, {Rejected} rejected, {Failed} failed",
-            feed.Id, result.Items, published, seen, untrusted, rejected, failed);
+            "Polled {FeedId}: {Items} items, {Published} published ({Fallbacks} with summary fallback), {Seen} already seen, {Untrusted} untrusted, {Rejected} rejected, {Failed} failed",
+            feed.Id, result.Items, published, fallbacks, seen, untrusted, rejected, failed);
         return result;
     }
 
