@@ -40,6 +40,12 @@ jobs:
           --health-timeout 10s
           --health-retries 12
 
+      # Real Qdrant for tests/Backstory.Infrastructure.Tests/Qdrant (same version as docker-compose.yml).
+      qdrant:
+        image: qdrant/qdrant:v1.13.0
+        ports:
+          - 6333:6333
+
     steps:
       - uses: actions/checkout@v4
 
@@ -63,6 +69,7 @@ jobs:
       - name: Test
         env:
           KAFKA_BOOTSTRAP: localhost:9092
+          QDRANT_URL: http://localhost:6333
         run: >
           dotnet test Backstory.sln -c Release --no-build
           --logger "trx;LogFileName=results.trx"

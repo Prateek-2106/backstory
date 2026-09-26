@@ -80,6 +80,14 @@ public sealed class MessageProcessor<T>
             {
                 throw; // shutting down: not a failure, and the message is not marked done
             }
+            catch (PermanentFailureException ex)
+            {
+                // The handler says retrying can never help (e.g. an untrusted URL): dead-letter now.
+                _logger.LogError("Permanent failure for event {EventId}: {Error}; sending to dead-letter topic without retrying.",
+                    envelope.Id, ex.Message);
+                await DeadLetterAsync(message, ex, attempt, ct);
+                return ProcessingOutcome.DeadLettered;
+            }
             catch (Exception ex) when (attempt < _retry.MaxAttempts)
             {
                 var wait = _retry.DelayAfter(attempt);
@@ -117,6 +125,18 @@ public sealed class MessageProcessor<T>
     }
 
     private static string Truncate(string s, int max) => s.Length <= max ? s : s[..max];
+}
+
+/// <summary>
+/// Throw from a handler when retrying cannot possibly succeed (bad data, policy violation).
+/// The processor dead-letters the message immediately instead of retrying it.
+/// Any other exception is treated as temporary (network, database down) and retried.
+/// </summary>
+public sealed class PermanentFailureException : Exception
+{
+    public PermanentFailureException() { }
+    public PermanentFailureException(string message) : base(message) { }
+    public PermanentFailureException(string message, Exception inner) : base(message, inner) { }
 }
 
 /// <summary>Header names added to every dead-lettered message.</summary>

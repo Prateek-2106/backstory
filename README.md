@@ -16,6 +16,7 @@ src/
   Backstory.Core/            domain, contracts, messaging logic, RAG pipeline (no third-party deps)
   Backstory.Infrastructure/  Kafka adapter (Postgres, Redis, Qdrant later)
   Backstory.Ingestion.Worker/ polls feeds, trust-checks every link, publishes to Kafka
+  Backstory.Indexer.Worker/   re-checks trust, chunks, embeds (Ollama), stores in Qdrant
 tools/
   Backstory.KafkaDemo/       step 3 demo: publish, consume, retry, dead-letter
 tests/
@@ -69,6 +70,16 @@ dotnet run --project src/Backstory.Ingestion.Worker
 
 - http://localhost:5101/ingestion/status shows each feed's last poll: published, already seen, untrusted, rejected, with reasons
 - Feeds are configured in `src/Backstory.Ingestion.Worker/appsettings.json`; the allowlist is `config/trusted-sources.json`
+
+## Indexer Worker (step 5)
+
+```bash
+dotnet run --project src/Backstory.Indexer.Worker
+```
+
+- http://localhost:5102/search?q=humanitarian%20access%20in%20Sudan semantic search over indexed chunks (`&k=10`, `&tier=1`)
+- http://localhost:5102/indexer/status number of chunks stored
+- http://localhost:6333/dashboard Qdrant's own UI (collection `trusted_chunks`)
 
 ## Kafka demo (step 3)
 

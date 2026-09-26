@@ -13,6 +13,11 @@ internal sealed class FakeHttp : HttpMessageHandler
 
     public List<string> Requested { get; } = [];
 
+    /// <summary>Method, URL and body of every request, for tests that check what we sent.</summary>
+    public List<(HttpMethod Method, string Url, string? Body)> Requests { get; } = [];
+
+    public FakeHttp Json(string url, string json) => Add(url, () => Content(json, "application/json"));
+
     public FakeHttp Html(string url, string html) => Add(url, () => Content(html, "text/html"));
 
     public FakeHttp Xml(string url, string xml) => Add(url, () => Content(xml, "application/rss+xml"));
@@ -30,11 +35,13 @@ internal sealed class FakeHttp : HttpMessageHandler
         return this;
     }
 
-    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         var url = request.RequestUri!.AbsoluteUri;
         Requested.Add(url);
-        return Task.FromResult(_routes.TryGetValue(url, out var make) ? make() : new HttpResponseMessage(HttpStatusCode.NotFound));
+        var body = request.Content is null ? null : await request.Content.ReadAsStringAsync(cancellationToken);
+        Requests.Add((request.Method, url, body));
+        return _routes.TryGetValue(url, out var make) ? make() : new HttpResponseMessage(HttpStatusCode.NotFound);
     }
 
     private static HttpResponseMessage Content(string body, string mediaType) =>

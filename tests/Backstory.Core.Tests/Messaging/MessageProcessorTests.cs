@@ -157,6 +157,32 @@ public class MessageProcessorTests
     }
 
     [Fact]
+    public async Task PermanentFailure_IsDeadLetteredOnFirstAttempt_WithoutRetrying()
+    {
+        var handler = new PermanentlyFailingHandler();
+
+        var outcome = await CreateProcessor(handler).ProcessAsync(ValidMessage(), CancellationToken.None);
+
+        Assert.Equal(ProcessingOutcome.DeadLettered, outcome);
+        Assert.Equal(1, handler.Calls);
+        Assert.Empty(_delays);
+        var letter = Assert.Single(_deadLetters.Letters);
+        Assert.Equal("1", letter.Headers[DeadLetterHeaders.Attempts]);
+        Assert.Equal(typeof(PermanentFailureException).FullName, letter.Headers[DeadLetterHeaders.ErrorType]);
+    }
+
+    private sealed class PermanentlyFailingHandler : IEventHandler<ArticlePublished>
+    {
+        public int Calls { get; private set; }
+
+        public Task HandleAsync(EventEnvelope<ArticlePublished> envelope, MessageContext context, CancellationToken ct)
+        {
+            Calls++;
+            throw new PermanentFailureException("URL is not on the allowlist");
+        }
+    }
+
+    [Fact]
     public void RetryOptions_DelayDoublesEachAttempt()
     {
         var retry = new RetryOptions { InitialDelay = TimeSpan.FromMilliseconds(500) };
