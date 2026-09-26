@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Adapters from Core's interfaces to real infrastructure: Kafka now; Postgres, Redis, Qdrant later. -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Confluent.Kafka" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Backstory.Core\Backstory.Core.csproj" />
+  </ItemGroup>
+</Project>

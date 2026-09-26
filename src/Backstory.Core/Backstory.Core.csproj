@@ -1,5 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- Domain, contracts and the RAG pipeline. Kept free of third-party packages so it is fully unit-testable. -->
+  <!-- Domain, contracts and the RAG pipeline. No third-party packages, so it is fully unit-testable. -->
+  <ItemGroup>
+    <!-- Only for Microsoft.Extensions.* abstractions (ILogger, IOptions); ships with .NET, not NuGet. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Backstory.Core.Tests" />
   </ItemGroup>

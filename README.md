@@ -13,9 +13,13 @@ Directory.Build.props      shared compiler settings (nullable, warnings as error
 Directory.Packages.props   central NuGet versions
 global.json                pins the .NET SDK band
 src/
-  Backstory.Core/          domain, contracts, RAG pipeline (no third-party deps)
+  Backstory.Core/            domain, contracts, messaging logic, RAG pipeline (no third-party deps)
+  Backstory.Infrastructure/  Kafka adapter (Postgres, Redis, Qdrant later)
+tools/
+  Backstory.KafkaDemo/       step 3 demo: publish, consume, retry, dead-letter
 tests/
-  Backstory.Core.Tests/    xUnit tests
+  Backstory.Core.Tests/            unit tests (no infrastructure needed)
+  Backstory.Infrastructure.Tests/  integration tests (need Kafka running)
 .github/workflows/ci.yml   restore -> build -> test on every push and PR
 ```
 
@@ -52,5 +56,14 @@ Stop with `docker compose down`; add `-v` to wipe all data.
 ```bash
 dotnet restore
 dotnet build -c Release
-dotnet test -c Release
+dotnet test -c Release                                  # everything (Kafka must be running)
+dotnet test -c Release --filter "Category!=Integration" # unit tests only
+```
+
+## Kafka demo (step 3)
+
+```bash
+dotnet run --project tools/Backstory.KafkaDemo                 # 3 events, consumed back
+dotnet run --project tools/Backstory.KafkaDemo -- --fail        # retries, then dead-letter topic
+dotnet run --project tools/Backstory.KafkaDemo -- --poison      # unparseable message, dead-lettered at once
 ```
