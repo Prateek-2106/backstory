@@ -15,6 +15,7 @@ public sealed class KafkaEventPublisher : IEventPublisher, IDeadLetterSink, IDis
 {
     private readonly IProducer<string?, byte[]> _producer;
     private readonly ILogger<KafkaEventPublisher> _logger;
+    private int _disposed; // 0 = alive, 1 = disposed
 
     public KafkaEventPublisher(IOptions<KafkaOptions> options, ILogger<KafkaEventPublisher> logger)
     {
@@ -81,6 +82,11 @@ public sealed class KafkaEventPublisher : IEventPublisher, IDeadLetterSink, IDis
 
     public void Dispose()
     {
+        // Dispose must be safe to call more than once. The DI container calls it once per
+        // registration, and this one object is registered three times (see AddKafka).
+        if (Interlocked.Exchange(ref _disposed, 1) == 1)
+            return;
+
         // Send anything still sitting in the batch buffer before shutting down.
         _producer.Flush(TimeSpan.FromSeconds(10));
         _producer.Dispose();
