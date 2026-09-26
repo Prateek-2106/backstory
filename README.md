@@ -26,6 +26,27 @@ Services (Gateway, Ingestion, Indexer, Context) and deployment files are added s
 - .NET 10 SDK (`dotnet --version` should print 10.0.x)
 - Docker Desktop (needed from step 2)
 
+## Local infrastructure
+
+| Service | URL / port | Purpose |
+|---|---|---|
+| Kafka | `localhost:9092` | Event backbone (8 topics created by `kafka-init`) |
+| Kafka UI | http://localhost:8081 | Browse topics and messages |
+| Postgres | `localhost:5432` (backstory / backstory-dev) | Articles and briefs |
+| Redis | `localhost:6379` | Brief cache |
+| Qdrant | http://localhost:6333/dashboard | Vector store |
+| Ollama | http://localhost:11434 | Local LLM + embeddings (installed natively) |
+
+```powershell
+winget install Ollama.Ollama
+ollama pull nomic-embed-text
+ollama pull llama3.1:8b
+docker compose up -d
+./scripts/check-infra.ps1
+```
+
+Stop with `docker compose down`; add `-v` to wipe all data.
+
 ## Build and test
 
 ```bash
